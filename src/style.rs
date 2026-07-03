@@ -2,6 +2,24 @@ use iced::theme::palette::Pair;
 use iced::widget::button;
 use iced::{Background, Border, Color, Shadow, Theme, border};
 
+pub type StyleFn<'a, T> = Box<dyn Fn(&T) -> Style + 'a>;
+
+pub trait Catalog: Sized {
+    type Class<'a>;
+    fn default<'a>() -> Self::Class<'a>;
+    fn style(&self, class: &Self::Class<'_>) -> Style;
+}
+
+impl Catalog for Theme {
+    type Class<'a> = StyleFn<'a, Self>;
+    fn default<'a>() -> Self::Class<'a> {
+        Box::new(Style::from_theme)
+    }
+    fn style(&self, class: &Self::Class<'_>) -> Style {
+        class(self)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SegmentPosition {
     Only,

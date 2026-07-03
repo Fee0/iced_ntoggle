@@ -8,7 +8,7 @@ pub use error::NtoggleError;
 use iced::widget::{Button, Row, Text, button, text};
 use iced::widget::button::StyleFn as ButtonStyleFn;
 use iced::{Element, Font, Length, Pixels, Theme as IcedTheme};
-pub use style::{Segment, SegmentPosition, Style};
+pub use style::{Catalog, Segment, SegmentPosition, Style, StyleFn};
 
 const MIN_STATES: usize = 2;
 
@@ -147,11 +147,14 @@ impl<Message, Theme> Items<'_, Message, Theme> {
     }
 }
 
-pub struct Ntoggle<'a, Message, Theme = IcedTheme> {
+pub struct Ntoggle<'a, Message, Theme = IcedTheme>
+where
+    Theme: Catalog,
+{
     items: Items<'a, Message, Theme>,
     selection: Selection,
     on_change: Box<dyn Fn(Selection) -> Message + 'a>,
-    style_fn: Rc<dyn Fn(&Theme) -> Style + 'a>,
+    class: Rc<Theme::Class<'a>>,
     padding: u16,
     spacing: u16,
     width: Length,
@@ -159,7 +162,7 @@ pub struct Ntoggle<'a, Message, Theme = IcedTheme> {
     text_size: Option<Pixels>,
 }
 
-impl<'a, Message: Clone + 'a, Theme: button::Catalog + text::Catalog + 'a>
+impl<'a, Message: Clone + 'a, Theme: Catalog + button::Catalog + text::Catalog + 'a>
     Ntoggle<'a, Message, Theme>
 where
     for<'b> <Theme as button::Catalog>::Class<'b>: From<ButtonStyleFn<'b, Theme>>,
@@ -213,7 +216,7 @@ where
             items,
             selection,
             on_change: Box::new(on_change),
-            style_fn: Rc::new(|_| Style::default()),
+            class: Rc::new(<Theme as Catalog>::default()),
             padding: 8,
             spacing: 0,
             width: Length::Shrink,
@@ -222,13 +225,12 @@ where
         })
     }
 
-    pub fn style(mut self, style: Style) -> Self {
-        self.style_fn = Rc::new(move |_: &Theme| style) as Rc<dyn Fn(&Theme) -> Style + 'a>;
-        self
-    }
-
-    pub fn style_fn(mut self, f: impl Fn(&Theme) -> Style + 'a) -> Self {
-        self.style_fn = Rc::new(f) as Rc<dyn Fn(&Theme) -> Style + 'a>;
+    pub fn style(mut self, style: impl Fn(&Theme) -> Style + 'a) -> Self
+    where
+        <Theme as Catalog>::Class<'a>: From<StyleFn<'a, Theme>>,
+    {
+        let boxed: StyleFn<'a, Theme> = Box::new(style);
+        self.class = Rc::new(boxed.into());
         self
     }
 
@@ -266,7 +268,7 @@ where
             items,
             selection,
             on_change,
-            style_fn,
+            class,
             padding,
             spacing,
             width,
@@ -310,12 +312,12 @@ where
                 let is_disabled = !is_selected && !selection.can_add_more();
                 let next_selection = selection.next_after_press(index);
                 let position = segment_position(index, len);
-                let style_fn = Rc::clone(&style_fn);
+                let class = Rc::clone(&class);
 
                 let button = Button::new(item)
                     .padding(padding)
                     .style(move |theme, status| {
-                        style_fn(theme)
+                        Catalog::style(theme, class.as_ref())
                             .segment(is_selected, status, position)
                             .into_button_style()
                     });
@@ -344,7 +346,7 @@ fn segment_position(index: usize, len: usize) -> SegmentPosition {
     }
 }
 
-impl<'a, Message: Clone + 'a, Theme: button::Catalog + text::Catalog + 'a>
+impl<'a, Message: Clone + 'a, Theme: Catalog + button::Catalog + text::Catalog + 'a>
     From<Ntoggle<'a, Message, Theme>> for Element<'a, Message, Theme>
 where
     for<'b> <Theme as button::Catalog>::Class<'b>: From<ButtonStyleFn<'b, Theme>>,
