@@ -225,9 +225,18 @@ impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
         } = self;
         let len = items.len();
 
+        // With no gap between segments, overlap them by the border width so the
+        // shared edge renders as a single line instead of two borders stacked
+        // side by side.
+        let row_spacing = if spacing == 0 {
+            -style.normal.border.width
+        } else {
+            f32::from(spacing)
+        };
+
         let row = items.into_iter().enumerate().fold(
             Row::new()
-                .spacing(u32::from(spacing))
+                .spacing(row_spacing)
                 .width(width)
                 .height(height),
             |row, (index, item)| {
