@@ -54,7 +54,7 @@ impl Demo {
             Message::Text,
         )
         .unwrap()
-        .style(square_style());
+        .style(|_theme| square_style());
 
         let glyph_toggle = Ntoggle::glyphs(
             ["◐", "●", "◯"],
@@ -63,7 +63,7 @@ impl Demo {
             Message::Glyph,
         )
         .unwrap()
-        .style(square_style())
+        .style(|_theme| square_style())
         .padding(10);
 
         let custom_items = [
@@ -75,7 +75,7 @@ impl Demo {
         let custom_toggle =
             Ntoggle::elements(custom_items, self.custom_selection.clone(), Message::Custom)
                 .unwrap()
-                .style(square_style())
+                .style(|_theme| square_style())
                 .spacing(4);
 
         container(

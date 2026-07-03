@@ -67,9 +67,10 @@ impl Demo {
     }
 
     fn view(&self) -> Element<'_, Message> {
-        let style = Style {
-            corner_radius: self.corner_radius,
-            ..Style::from_theme(&self.theme())
+        let corner_radius = self.corner_radius;
+        let style = move |theme: &Theme| Style {
+            corner_radius,
+            ..Style::from_theme(theme)
         };
 
         let text_toggle = Ntoggle::text(
