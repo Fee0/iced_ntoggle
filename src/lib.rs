@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 
 pub use error::NtoggleError;
 use iced::widget::{Button, Row, Text};
-use iced::{Element, Font, Length};
+use iced::{Element, Font, Length, Pixels};
 pub use style::{SegmentPosition, Style};
 
 const MIN_STATES: usize = 2;
@@ -128,8 +128,25 @@ impl Selection {
     }
 }
 
+enum Items<'a, Message> {
+    Text {
+        labels: Vec<String>,
+        font: Option<Font>,
+    },
+    Elements(Vec<Element<'a, Message>>),
+}
+
+impl<Message> Items<'_, Message> {
+    fn len(&self) -> usize {
+        match self {
+            Self::Text { labels, .. } => labels.len(),
+            Self::Elements(elements) => elements.len(),
+        }
+    }
+}
+
 pub struct Ntoggle<'a, Message> {
-    items: Vec<Element<'a, Message>>,
+    items: Items<'a, Message>,
     selection: Selection,
     on_change: Box<dyn Fn(Selection) -> Message + 'a>,
     style: Style,
@@ -137,6 +154,7 @@ pub struct Ntoggle<'a, Message> {
     spacing: u16,
     width: Length,
     height: Length,
+    text_size: Option<Pixels>,
 }
 
 impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
@@ -145,12 +163,9 @@ impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
         selection: Selection,
         on_change: impl Fn(Selection) -> Message + 'a,
     ) -> Result<Self, NtoggleError> {
-        let items: Vec<Element<'a, Message>> = labels
-            .into_iter()
-            .map(|label| Element::from(Text::new(label.into())))
-            .collect();
+        let labels = labels.into_iter().map(Into::into).collect();
 
-        Self::elements(items, selection, on_change)
+        Self::from_items(Items::Text { labels, font: None }, selection, on_change)
     }
 
     pub fn glyphs(
@@ -159,12 +174,16 @@ impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
         selection: Selection,
         on_change: impl Fn(Selection) -> Message + 'a,
     ) -> Result<Self, NtoggleError> {
-        let items: Vec<Element<'a, Message>> = glyphs
-            .into_iter()
-            .map(|glyph| Element::from(Text::new(glyph.into()).font(font)))
-            .collect();
+        let labels = glyphs.into_iter().map(Into::into).collect();
 
-        Self::elements(items, selection, on_change)
+        Self::from_items(
+            Items::Text {
+                labels,
+                font: Some(font),
+            },
+            selection,
+            on_change,
+        )
     }
 
     pub fn elements(
@@ -173,6 +192,15 @@ impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
         on_change: impl Fn(Selection) -> Message + 'a,
     ) -> Result<Self, NtoggleError> {
         let items = items.into_iter().collect::<Vec<_>>();
+
+        Self::from_items(Items::Elements(items), selection, on_change)
+    }
+
+    fn from_items(
+        items: Items<'a, Message>,
+        selection: Selection,
+        on_change: impl Fn(Selection) -> Message + 'a,
+    ) -> Result<Self, NtoggleError> {
         selection.validate(items.len())?;
 
         Ok(Self {
@@ -184,6 +212,7 @@ impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
             spacing: 0,
             width: Length::Shrink,
             height: Length::Shrink,
+            text_size: None,
         })
     }
 
@@ -212,6 +241,15 @@ impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
         self
     }
 
+    /// Sets the text size for items built via [`Ntoggle::text`] or
+    /// [`Ntoggle::glyphs`]. Has no effect on items built via
+    /// [`Ntoggle::elements`], since those are arbitrary, already-erased
+    /// elements whose size cannot be retroactively changed.
+    pub fn text_size(mut self, text_size: impl Into<Pixels>) -> Self {
+        self.text_size = Some(text_size.into());
+        self
+    }
+
     pub fn into_element(self) -> Element<'a, Message> {
         let Self {
             items,
@@ -222,14 +260,32 @@ impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
             spacing,
             width,
             height,
+            text_size,
         } = self;
         let len = items.len();
+
+        let items: Vec<Element<'a, Message>> = match items {
+            Items::Text { labels, font } => labels
+                .into_iter()
+                .map(|label| {
+                    let mut text = Text::new(label);
+                    if let Some(font) = font {
+                        text = text.font(font);
+                    }
+                    if let Some(text_size) = text_size {
+                        text = text.size(text_size);
+                    }
+                    Element::from(text)
+                })
+                .collect(),
+            Items::Elements(elements) => elements,
+        };
 
         // With no gap between segments, overlap them by the border width so the
         // shared edge renders as a single line instead of two borders stacked
         // side by side.
         let row_spacing = if spacing == 0 {
-            -style.normal.border.width
+            -style.max_border_width()
         } else {
             f32::from(spacing)
         };

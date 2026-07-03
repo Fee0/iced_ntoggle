@@ -1,5 +1,6 @@
+use iced::theme::palette::Pair;
 use iced::widget::button;
-use iced::{Background, Border, Color, Shadow, border};
+use iced::{Background, Border, Color, Shadow, Theme, border};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SegmentPosition {
@@ -71,6 +72,59 @@ impl Style {
 
         segment.border.radius = position.radius(self.corner_radius);
         segment
+    }
+
+    /// Derives a [`Style`] from an [`iced::Theme`]'s extended palette, so the
+    /// widget can match the app's light/dark/custom theme instead of the
+    /// fixed light palette used by [`Style::default`].
+    pub fn from_theme(theme: &Theme) -> Self {
+        let palette = theme.extended_palette();
+
+        let border = Border::default()
+            .width(1.0)
+            .color(palette.background.strong.color);
+
+        let segment_from_pair = |pair: Pair| Segment {
+            background: Some(Background::Color(pair.color)),
+            text_color: pair.text,
+            border,
+            shadow: Shadow::default(),
+            snap: true,
+        };
+
+        let mut disabled = segment_from_pair(palette.background.base);
+        disabled.background = disabled.background.map(|bg| bg.scale_alpha(0.5));
+        disabled.text_color = disabled.text_color.scale_alpha(0.5);
+
+        Self {
+            corner_radius: 6.0,
+            normal: segment_from_pair(palette.background.base),
+            hovered: segment_from_pair(palette.background.weak),
+            pressed: segment_from_pair(palette.background.strong),
+            selected: segment_from_pair(palette.primary.base),
+            selected_hovered: segment_from_pair(palette.primary.strong),
+            disabled,
+        }
+    }
+
+    /// Returns the largest border width across all six [`Segment`] states.
+    ///
+    /// Used to size the negative row spacing that makes adjacent segments'
+    /// shared edges overlap into a single line; using the maximum (instead
+    /// of assuming `normal` represents every state) avoids a visible
+    /// double-border seam even when e.g. `selected` has a thicker border
+    /// than `normal`.
+    pub(crate) fn max_border_width(&self) -> f32 {
+        [
+            self.normal.border.width,
+            self.hovered.border.width,
+            self.pressed.border.width,
+            self.selected.border.width,
+            self.selected_hovered.border.width,
+            self.disabled.border.width,
+        ]
+        .into_iter()
+        .fold(0.0_f32, f32::max)
     }
 }
 
@@ -154,5 +208,13 @@ mod tests {
             SegmentPosition::Last.radius(6.0),
             border::Radius::default().right(6.0)
         );
+    }
+
+    #[test]
+    fn max_border_width_picks_largest_across_segments() {
+        let mut style = Style::default();
+        style.selected.border.width = 3.0;
+
+        assert_eq!(style.max_border_width(), 3.0);
     }
 }
