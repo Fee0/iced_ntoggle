@@ -107,25 +107,6 @@ impl Style {
         }
     }
 
-    /// Returns the largest border width across all six [`Segment`] states.
-    ///
-    /// Used to size the negative row spacing that makes adjacent segments'
-    /// shared edges overlap into a single line; using the maximum (instead
-    /// of assuming `normal` represents every state) avoids a visible
-    /// double-border seam even when e.g. `selected` has a thicker border
-    /// than `normal`.
-    pub(crate) fn max_border_width(&self) -> f32 {
-        [
-            self.normal.border.width,
-            self.hovered.border.width,
-            self.pressed.border.width,
-            self.selected.border.width,
-            self.selected_hovered.border.width,
-            self.disabled.border.width,
-        ]
-        .into_iter()
-        .fold(0.0_f32, f32::max)
-    }
 }
 
 impl Default for Style {
@@ -210,11 +191,4 @@ mod tests {
         );
     }
 
-    #[test]
-    fn max_border_width_picks_largest_across_segments() {
-        let mut style = Style::default();
-        style.selected.border.width = 3.0;
-
-        assert_eq!(style.max_border_width(), 3.0);
-    }
 }

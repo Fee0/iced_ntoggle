@@ -2,11 +2,13 @@ pub mod error;
 pub mod style;
 
 use std::num::NonZeroUsize;
+use std::rc::Rc;
 
 pub use error::NtoggleError;
-use iced::widget::{Button, Row, Text};
-use iced::{Element, Font, Length, Pixels};
-pub use style::{SegmentPosition, Style};
+use iced::widget::{Button, Row, Text, button, text};
+use iced::widget::button::StyleFn as ButtonStyleFn;
+use iced::{Element, Font, Length, Pixels, Theme as IcedTheme};
+pub use style::{Segment, SegmentPosition, Style};
 
 const MIN_STATES: usize = 2;
 
@@ -128,15 +130,15 @@ impl Selection {
     }
 }
 
-enum Items<'a, Message> {
+enum Items<'a, Message, Theme> {
     Text {
         labels: Vec<String>,
         font: Option<Font>,
     },
-    Elements(Vec<Element<'a, Message>>),
+    Elements(Vec<Element<'a, Message, Theme>>),
 }
 
-impl<Message> Items<'_, Message> {
+impl<Message, Theme> Items<'_, Message, Theme> {
     fn len(&self) -> usize {
         match self {
             Self::Text { labels, .. } => labels.len(),
@@ -145,11 +147,11 @@ impl<Message> Items<'_, Message> {
     }
 }
 
-pub struct Ntoggle<'a, Message> {
-    items: Items<'a, Message>,
+pub struct Ntoggle<'a, Message, Theme = IcedTheme> {
+    items: Items<'a, Message, Theme>,
     selection: Selection,
     on_change: Box<dyn Fn(Selection) -> Message + 'a>,
-    style: Style,
+    style_fn: Rc<dyn Fn(&Theme) -> Style + 'a>,
     padding: u16,
     spacing: u16,
     width: Length,
@@ -157,7 +159,11 @@ pub struct Ntoggle<'a, Message> {
     text_size: Option<Pixels>,
 }
 
-impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
+impl<'a, Message: Clone + 'a, Theme: button::Catalog + text::Catalog + 'a>
+    Ntoggle<'a, Message, Theme>
+where
+    for<'b> <Theme as button::Catalog>::Class<'b>: From<ButtonStyleFn<'b, Theme>>,
+{
     pub fn text(
         labels: impl IntoIterator<Item = impl Into<String>>,
         selection: Selection,
@@ -187,7 +193,7 @@ impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
     }
 
     pub fn elements(
-        items: impl IntoIterator<Item = Element<'a, Message>>,
+        items: impl IntoIterator<Item = Element<'a, Message, Theme>>,
         selection: Selection,
         on_change: impl Fn(Selection) -> Message + 'a,
     ) -> Result<Self, NtoggleError> {
@@ -197,7 +203,7 @@ impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
     }
 
     fn from_items(
-        items: Items<'a, Message>,
+        items: Items<'a, Message, Theme>,
         selection: Selection,
         on_change: impl Fn(Selection) -> Message + 'a,
     ) -> Result<Self, NtoggleError> {
@@ -207,7 +213,7 @@ impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
             items,
             selection,
             on_change: Box::new(on_change),
-            style: Style::default(),
+            style_fn: Rc::new(|_| Style::default()),
             padding: 8,
             spacing: 0,
             width: Length::Shrink,
@@ -217,7 +223,12 @@ impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
     }
 
     pub fn style(mut self, style: Style) -> Self {
-        self.style = style;
+        self.style_fn = Rc::new(move |_: &Theme| style) as Rc<dyn Fn(&Theme) -> Style + 'a>;
+        self
+    }
+
+    pub fn style_fn(mut self, f: impl Fn(&Theme) -> Style + 'a) -> Self {
+        self.style_fn = Rc::new(f) as Rc<dyn Fn(&Theme) -> Style + 'a>;
         self
     }
 
@@ -250,12 +261,12 @@ impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
         self
     }
 
-    pub fn into_element(self) -> Element<'a, Message> {
+    pub fn into_element(self) -> Element<'a, Message, Theme> {
         let Self {
             items,
             selection,
             on_change,
-            style,
+            style_fn,
             padding,
             spacing,
             width,
@@ -264,7 +275,7 @@ impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
         } = self;
         let len = items.len();
 
-        let items: Vec<Element<'a, Message>> = match items {
+        let items: Vec<Element<'a, Message, Theme>> = match items {
             Items::Text { labels, font } => labels
                 .into_iter()
                 .map(|label| {
@@ -281,11 +292,10 @@ impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
             Items::Elements(elements) => elements,
         };
 
-        // With no gap between segments, overlap them by the border width so the
-        // shared edge renders as a single line instead of two borders stacked
-        // side by side.
+        // With no gap between segments, overlap by 1px so the shared edge
+        // renders as a single line instead of two stacked borders.
         let row_spacing = if spacing == 0 {
-            -style.max_border_width()
+            -1.0
         } else {
             f32::from(spacing)
         };
@@ -299,13 +309,13 @@ impl<'a, Message: Clone + 'a> Ntoggle<'a, Message> {
                 let is_selected = selection.contains(index);
                 let is_disabled = !is_selected && !selection.can_add_more();
                 let next_selection = selection.next_after_press(index);
-                let style_for_segment = style;
                 let position = segment_position(index, len);
+                let style_fn = Rc::clone(&style_fn);
 
                 let button = Button::new(item)
                     .padding(padding)
-                    .style(move |_theme, status| {
-                        style_for_segment
+                    .style(move |theme, status| {
+                        style_fn(theme)
                             .segment(is_selected, status, position)
                             .into_button_style()
                     });
@@ -334,8 +344,12 @@ fn segment_position(index: usize, len: usize) -> SegmentPosition {
     }
 }
 
-impl<'a, Message: Clone + 'a> From<Ntoggle<'a, Message>> for Element<'a, Message> {
-    fn from(ntoggle: Ntoggle<'a, Message>) -> Self {
+impl<'a, Message: Clone + 'a, Theme: button::Catalog + text::Catalog + 'a>
+    From<Ntoggle<'a, Message, Theme>> for Element<'a, Message, Theme>
+where
+    for<'b> <Theme as button::Catalog>::Class<'b>: From<ButtonStyleFn<'b, Theme>>,
+{
+    fn from(ntoggle: Ntoggle<'a, Message, Theme>) -> Self {
         ntoggle.into_element()
     }
 }
