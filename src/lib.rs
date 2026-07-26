@@ -160,6 +160,7 @@ where
     width: Length,
     height: Length,
     text_size: Option<Pixels>,
+    disabled: Vec<usize>,
 }
 
 impl<'a, Message: Clone + 'a, Theme: Catalog + button::Catalog + text::Catalog + 'a>
@@ -222,6 +223,7 @@ where
             width: Length::Shrink,
             height: Length::Shrink,
             text_size: None,
+            disabled: Vec::new(),
         })
     }
 
@@ -263,6 +265,13 @@ where
         self
     }
 
+    /// Marks the given item indices as disabled: they render in the themed disabled style and
+    /// don't respond to presses, regardless of `Selection`. Out-of-range indices are ignored.
+    pub fn disabled(mut self, indices: impl IntoIterator<Item = usize>) -> Self {
+        self.disabled = indices.into_iter().collect();
+        self
+    }
+
     pub fn into_element(self) -> Element<'a, Message, Theme> {
         let Self {
             items,
@@ -274,6 +283,7 @@ where
             width,
             height,
             text_size,
+            disabled,
         } = self;
         let len = items.len();
 
@@ -309,7 +319,8 @@ where
                 .height(height),
             |row, (index, item)| {
                 let is_selected = selection.contains(index);
-                let is_disabled = !is_selected && !selection.can_add_more();
+                let is_disabled =
+                    disabled.contains(&index) || (!is_selected && !selection.can_add_more());
                 let next_selection = selection.next_after_press(index);
                 let position = segment_position(index, len);
                 let class = Rc::clone(&class);
