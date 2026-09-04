@@ -5,8 +5,8 @@ use std::num::NonZeroUsize;
 use std::rc::Rc;
 
 pub use error::NtoggleError;
-use iced::widget::{Button, Row, Text, button, text};
 use iced::widget::button::StyleFn as ButtonStyleFn;
+use iced::widget::{Button, Container, Row, Text, button, container, text};
 use iced::{Element, Font, Length, Pixels, Theme as IcedTheme};
 pub use style::{Catalog, Segment, SegmentPosition, Style, StyleFn};
 
@@ -163,8 +163,11 @@ where
     disabled: Vec<usize>,
 }
 
-impl<'a, Message: Clone + 'a, Theme: Catalog + button::Catalog + text::Catalog + 'a>
-    Ntoggle<'a, Message, Theme>
+impl<
+    'a,
+    Message: Clone + 'a,
+    Theme: Catalog + button::Catalog + text::Catalog + container::Catalog + 'a,
+> Ntoggle<'a, Message, Theme>
 where
     for<'b> <Theme as button::Catalog>::Class<'b>: From<ButtonStyleFn<'b, Theme>>,
 {
@@ -291,7 +294,9 @@ where
             Items::Text { labels, font } => labels
                 .into_iter()
                 .map(|label| {
-                    let mut text = Text::new(label);
+                    // A segment label is a single line: a narrow toggle clips it rather than
+                    // wrapping it onto a second line and growing the whole bar taller.
+                    let mut text = Text::new(label).wrapping(text::Wrapping::None);
                     if let Some(font) = font {
                         text = text.font(font);
                     }
@@ -313,10 +318,7 @@ where
         };
 
         let row = items.into_iter().enumerate().fold(
-            Row::new()
-                .spacing(row_spacing)
-                .width(width)
-                .height(height),
+            Row::new().spacing(row_spacing).width(width).height(height),
             |row, (index, item)| {
                 let is_selected = selection.contains(index);
                 let is_disabled =
@@ -325,7 +327,10 @@ where
                 let position = segment_position(index, len);
                 let class = Rc::clone(&class);
 
-                let button = Button::new(item)
+                // When the row has less width than the segments ask for, flex squeezes the later
+                // ones; clipping keeps their content inside their own segment instead of
+                // painting over the neighbours.
+                let button = Button::new(Container::new(item).clip(true))
                     .padding(padding)
                     .style(move |theme, status| {
                         Catalog::style(theme, class.as_ref())
@@ -357,8 +362,11 @@ fn segment_position(index: usize, len: usize) -> SegmentPosition {
     }
 }
 
-impl<'a, Message: Clone + 'a, Theme: Catalog + button::Catalog + text::Catalog + 'a>
-    From<Ntoggle<'a, Message, Theme>> for Element<'a, Message, Theme>
+impl<
+    'a,
+    Message: Clone + 'a,
+    Theme: Catalog + button::Catalog + text::Catalog + container::Catalog + 'a,
+> From<Ntoggle<'a, Message, Theme>> for Element<'a, Message, Theme>
 where
     for<'b> <Theme as button::Catalog>::Class<'b>: From<ButtonStyleFn<'b, Theme>>,
 {

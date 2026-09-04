@@ -50,7 +50,11 @@ impl Default for Demo {
 
 impl Demo {
     fn theme(&self) -> Theme {
-        if self.dark_mode { Theme::Dark } else { Theme::Light }
+        if self.dark_mode {
+            Theme::Dark
+        } else {
+            Theme::Light
+        }
     }
 
     fn update(&mut self, message: Message) {

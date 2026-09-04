@@ -124,7 +124,6 @@ impl Style {
             disabled,
         }
     }
-
 }
 
 impl Default for Style {
@@ -208,5 +207,4 @@ mod tests {
             border::Radius::default().right(6.0)
         );
     }
-
 }
